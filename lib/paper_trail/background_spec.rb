@@ -1,11 +1,35 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 
-class DummyClass
+WithData = Struct.new(:data)
+WithVersionClass = Struct.new(:version_class)
+
+class SuperDummyClass
+  def record_create
+    @record = 1
+  end
+
+  def record_update(record)
+    @record = record
+  end
+
+  def record_destroy(record)
+    @record = record
+  end
+
+  def record_update_columns(record)
+    @record = record
+  end
+end
+
+class DummyClass < SuperDummyClass
   include PaperTrail::Background
 
   def initialize(options: {}, record: nil)
     @options = options
     @record = record
+    super()
   end
 
   def enabled?
@@ -55,20 +79,22 @@ RSpec.describe PaperTrail::Background do
       end
 
       it "does not trigger a write if record is opted in but async is blank" do
+        allow(record).to receive(:paper_trail_event).and_return(async: nil)
         allow(record).to receive(:paper_trail_options).and_return(async: nil)
+        allow(record.class).to receive(:paper_trail).and_return(WithVersionClass.new(Class))
 
-        DummyClass.new(options: { enabled: true }, record: record).record_create
+        DummyClass.new(options: { enabled: true }, record:).record_create
 
         expect(VersionJob).not_to have_received(:perform_later)
       end
 
       it "triggers a write if record is opted in and async is true" do
         allow(record).to receive(:paper_trail_options).and_return(async: true)
-        allow(PaperTrail::Events::Create).to receive(:new).and_return(OpenStruct.new(data: {}))
-        allow(RSpec::Mocks::Double).to receive(:paper_trail).and_return(OpenStruct.new(version_class: Class))
-        allow(ActiveRecord::Base).to receive(:after_transaction).and_yield
+        allow(PaperTrail::Events::Create).to receive(:new).and_return(WithData.new({}))
+        allow(record.class).to receive(:paper_trail).and_return(WithVersionClass.new(Class))
+        allow(record.class).to receive(:after_transaction).and_yield
 
-        DummyClass.new(options: { enabled: true }, record: record).record_create
+        DummyClass.new(options: { enabled: true }, record:).record_create
 
         expect(VersionJob).to have_received(:perform_later)
       end
@@ -94,28 +120,26 @@ RSpec.describe PaperTrail::Background do
       it "does not trigger a write if record is opted in but async is blank" do
         allow(record).to receive(:paper_trail_options).and_return(async: nil)
 
-        DummyClass.new(options: { enabled: true }, record: record).record_destroy("after")
+        DummyClass.new(options: { enabled: true }, record:).record_destroy("after")
 
         expect(VersionJob).not_to have_received(:perform_later)
       end
 
       it "does not trigger a write if record is new" do
-        allow(record).to receive(:paper_trail_options).and_return(async: true)
-        allow(record).to receive(:new_record?).and_return(true)
+        allow(record).to receive_messages(paper_trail_options: { async: true }, new_record?: true)
 
-        DummyClass.new(options: { enabled: true }, record: record).record_destroy("after")
+        DummyClass.new(options: { enabled: true }, record:).record_destroy("after")
 
         expect(VersionJob).not_to have_received(:perform_later)
       end
 
       it "triggers a write if record is opted in and async is true" do
-        allow(record).to receive(:paper_trail_options).and_return(async: true)
-        allow(record).to receive(:new_record?).and_return(false)
-        allow(PaperTrail::Events::Destroy).to receive(:new).and_return(OpenStruct.new(data: {}))
-        allow(RSpec::Mocks::Double).to receive(:paper_trail).and_return(OpenStruct.new(version_class: Class))
-        allow(ActiveRecord::Base).to receive(:after_transaction).and_yield
+        allow(record).to receive_messages(paper_trail_options: { async: true }, new_record?: false)
+        allow(PaperTrail::Events::Destroy).to receive(:new).and_return(WithData.new({}))
+        allow(record.class).to receive(:paper_trail).and_return(WithVersionClass.new(Class))
+        allow(record.class).to receive(:after_transaction).and_yield
 
-        DummyClass.new(options: { enabled: true }, record: record).record_destroy("after")
+        DummyClass.new(options: { enabled: true }, record:).record_destroy("after")
 
         expect(VersionJob).to have_received(:perform_later)
       end
@@ -141,19 +165,18 @@ RSpec.describe PaperTrail::Background do
       it "does not trigger a write if record is opted in but async is blank" do
         allow(record).to receive(:paper_trail_options).and_return(async: nil)
 
-        DummyClass.new(options: { enabled: true }, record: record).record_update(force: true, in_after_callback: true, is_touch: false)
+        DummyClass.new(options: { enabled: true }, record:).record_update(force: true, in_after_callback: true, is_touch: false)
 
         expect(VersionJob).not_to have_received(:perform_later)
       end
 
       it "triggers a write if record is opted in and async is true" do
-        allow(record).to receive(:paper_trail_options).and_return(async: true)
-        allow(record).to receive(:new_record?).and_return(false)
-        allow(PaperTrail::Events::Update).to receive(:new).and_return(OpenStruct.new(data: {}))
-        allow(RSpec::Mocks::Double).to receive(:paper_trail).and_return(OpenStruct.new(version_class: Class))
-        allow(ActiveRecord::Base).to receive(:after_transaction).and_yield
+        allow(record).to receive_messages(paper_trail_options: { async: true }, new_record?: false)
+        allow(PaperTrail::Events::Update).to receive(:new).and_return(WithData.new({}))
+        allow(record.class).to receive(:paper_trail).and_return(WithVersionClass.new(Class))
+        allow(record.class).to receive(:after_transaction).and_yield
 
-        DummyClass.new(options: { enabled: true }, record: record).record_update(force: true, in_after_callback: true, is_touch: false)
+        DummyClass.new(options: { enabled: true }, record:).record_update(force: true, in_after_callback: true, is_touch: false)
 
         expect(VersionJob).to have_received(:perform_later)
       end
@@ -179,19 +202,18 @@ RSpec.describe PaperTrail::Background do
       it "does not trigger a write if record is opted in but async is blank" do
         allow(record).to receive(:paper_trail_options).and_return(async: nil)
 
-        DummyClass.new(options: { enabled: true }, record: record).record_update_columns({})
+        DummyClass.new(options: { enabled: true }, record:).record_update_columns({})
 
         expect(VersionJob).not_to have_received(:perform_later)
       end
 
       it "triggers a write if record is opted in and async is true" do
-        allow(record).to receive(:paper_trail_options).and_return(async: true)
-        allow(record).to receive(:new_record?).and_return(false)
-        allow(PaperTrail::Events::Update).to receive(:new).and_return(OpenStruct.new(data: {}))
-        allow(RSpec::Mocks::Double).to receive(:paper_trail).and_return(OpenStruct.new(version_class: Class))
-        allow(ActiveRecord::Base).to receive(:after_transaction).and_yield
+        allow(record).to receive_messages(paper_trail_options: { async: true }, new_record?: false)
+        allow(PaperTrail::Events::Update).to receive(:new).and_return(WithData.new({}))
+        allow(record.class).to receive(:paper_trail).and_return(WithVersionClass.new(Class))
+        allow(record.class).to receive(:after_transaction).and_yield
 
-        DummyClass.new(options: { enabled: true }, record: record).record_update_columns({})
+        DummyClass.new(options: { enabled: true }, record:).record_update_columns({})
 
         expect(VersionJob).to have_received(:perform_later)
       end
